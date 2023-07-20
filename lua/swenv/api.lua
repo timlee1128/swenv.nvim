@@ -34,7 +34,7 @@ end
 ---@param first string|nil
 ---@param second string|nil
 ---@return boolean
-local has_high_priority_in_path = function (first, second)
+local has_high_priority_in_path = function(first, second)
   if first == nil or first == vim.NIL then
     return false
   end
@@ -81,41 +81,46 @@ M.get_current_venv = function()
   return current_venv
 end
 
+M.add_venvs = function(venvs, venvs_path, source)
+  local success, Path = pcall(require, 'plenary.path')
+  if not success then
+    vim.notify('Could not require plenary: ' .. Path, vim.log.levels.WARN)
+    return
+  end
+
+  local scan_dir = require('plenary.scandir').scan_dir
+  local paths = scan_dir(venvs_path, { depth = 1, only_dirs = true, silent = true })
+
+  for _, path in ipairs(paths) do
+    table.insert(venvs, {
+      name = Path:new(path):make_relative(venvs_path),
+      path = path,
+      source = source
+    })
+  end
+end
+
 M.get_venvs = function(venvs_path)
   local success, Path = pcall(require, 'plenary.path')
   if not success then
     vim.notify('Could not require plenary: ' .. Path, vim.log.levels.WARN)
     return
   end
-  local scan_dir = require('plenary.scandir').scan_dir
 
   local venvs = {}
 
   -- CONDA
   local conda_exe = vim.fn.getenv('CONDA_EXE')
   if conda_exe ~= vim.NIL then
+    -- envs from conda install path
     local conda_env_path = Path:new(conda_exe):parent():parent() .. '/envs'
-    local conda_paths = scan_dir(conda_env_path, { depth = 1, only_dirs = true, silent = true })
+    M.add_venvs(venvs, conda_env_path, 'conda')
 
-    for _, path in ipairs(conda_paths) do
-      table.insert(venvs, {
-        name = Path:new(path):make_relative(conda_env_path),
-        path = path,
-        source = 'conda',
-      })
-    end
+    -- envs from current user home path
+    M.add_venvs(venvs, vim.fn.expand('~/.conda/envs'), 'conda')
   end
 
-  -- VENV
-  local paths = scan_dir(venvs_path, { depth = 1, only_dirs = true, silent = true })
-  for _, path in ipairs(paths) do
-    table.insert(venvs, {
-      -- TODO how does one get the name of the file directly?
-      name = Path:new(path):make_relative(venvs_path),
-      path = path,
-      source = 'venv',
-    })
-  end
+  M.add_venvs(venvs, venvs_path, 'venv')
 
   return venvs
 end
